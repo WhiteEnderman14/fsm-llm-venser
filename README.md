@@ -310,6 +310,7 @@ src/fsm_llm_venser/    the engine, the same for every machine
 examples/              specific machines, each with machine.yaml, plugin.py and scenarios/
     narrative_medicine_interview/   the default example: the course interview
     support_ticket/     every feature of the format, one at a time
+notebooks/             Colab launcher
 docs/                  file-format.md, plugins.md
 ```
 
@@ -326,6 +327,13 @@ docs/                  file-format.md, plugins.md
 | `[guard]` lines in a run | the model picked an event the state does not accept. A few are normal with a small model; if many, improve the event descriptions or add `examples`. |
 | `permission denied` on the Docker socket | add your user to the `docker` group and log in again, or use Podman |
 | Windows: `winget` not found | update "App Installer" from the Microsoft Store, or download the installers by hand |
+
+## Colab
+
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/WhiteEnderman14/fsm-llm-venser/blob/main/notebooks/colab_launcher.ipynb)
+
+The notebook `notebooks/colab_launcher.ipynb` installs the package from GitHub, installs Ollama
+(or reads a Gemini or Claude key from Colab Secrets) and runs the example.
 
 ## Authors
 
