@@ -1,0 +1,48 @@
+[project]
+name = "fsm-llm-venser"
+version = "0.1.0"
+description = "Declarative, nestable finite-state machines driven by an LLM: load a YAML machine, emulate it with an LLM classifier."
+readme = "README.md"
+authors = [
+    { name = "Massimo Ventura" },
+    { name = "Sonia Sergio" },
+]
+requires-python = ">=3.11"
+dependencies = [
+    "graphviz>=0.21",
+    "langchain-core>=1.6.12",
+    "langgraph>=1.2.16",
+    "pydantic>=2.14.1",
+    "pyyaml>=6.0.3",
+]
+
+[project.scripts]
+fsm-llm-venser = "fsm_llm_venser.fsm_cli:main"
+
+[project.optional-dependencies]
+ollama = [
+    "langchain-ollama>=1.1.0",
+]
+gemini = [
+    "langchain-google-genai>=4.4.2",
+]
+claude = [
+    "langchain-anthropic>=1.0.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.7,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.1",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]  # line length is handled by `ruff format`
