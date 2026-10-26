@@ -1,0 +1,5 @@
+name: The person asks for a human (a rule, no model call)
+replies:
+  - "Yes, go ahead."
+  - "Honestly, can I speak to a real person? This is complicated."
+when_exhausted: "I would rather stop here."

@@ -1,0 +1,14 @@
+name: B messy path (retries, skip, revision)
+replies:
+  - "uh... what is this?"                                  # WELCOME: BRIEF, asked again
+  - "ok fine, yes"                                         # WELCOME: CONFIRM
+  - "I don't know where to start."                         # OPENING: BRIEF, asked again
+  - "Well, I've had back pain for years."                  # OPENING: ANSWER
+  - "I'd rather not talk about dates."                     # TIMELINE: SKIP
+  - "Mostly tired, and frustrated that nobody believes how bad it is."   # EMOTIONS.INVITE
+  - "I'd rather not say more."                             # EMOTIONS.DEEPEN: SKIP
+  - "Yes, roughly."                                        # EMOTIONS.REFLECT
+  - "Skip this one please."                                # MEANING: SKIP
+  - "My neighbour brings me groceries."                    # SUPPORT
+  - "Not quite: it's not that nobody believes me, it's that I feel rushed in appointments."  # SUMMARY: REVISE
+  - "Yes, that's it."                                      # SUMMARY: CONFIRM

@@ -1,0 +1,9 @@
+name: Skip the checks and a vague first reply
+replies:
+  - "hmm"                                               # WELCOME: BRIEF, the clarify text is used
+  - "Yes, go ahead."
+  - "The invoice export in the web app gives an error."
+  - "I'd rather skip these checks."                    # from_any_state of the box: SKIP -> PRIORITY
+  - "It can wait until tomorrow."
+  - "Yes."
+when_exhausted: "I would rather stop here."

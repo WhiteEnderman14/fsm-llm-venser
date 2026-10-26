@@ -1,0 +1,12 @@
+name: Two fixes fail, urgent ticket
+replies:
+  - "Yes, go ahead."
+  - "My laptop will not connect to the office wifi since Monday's update."
+  - "A ThinkPad T14."                                   # TROUBLESHOOT.DEVICE.ASK_MODEL
+  - "Windows 11, version 23H2."                         # TROUBLESHOOT.DEVICE.ASK_OS
+  - "No, nothing changed."                              # TROUBLESHOOT.TRY_FIX
+  - "Still not working."                                # TROUBLESHOOT.SECOND_TRY
+  - "It's urgent, I cannot work without the network."   # PRIORITY: reply_matches -> high
+  - "Please add that it also fails on the guest network."   # SUMMARY: REVISE
+  - "Yes, that is right."
+when_exhausted: "I would rather stop here."

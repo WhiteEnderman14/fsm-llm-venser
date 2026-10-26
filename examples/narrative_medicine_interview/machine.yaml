@@ -1,0 +1,239 @@
+# The narrative-medicine interview from the course notebook, with EMOTIONS as a nested
+# machine (case study 2). Texts and goals come from the notebook; the goals and transitions
+# of the EMOTIONS sub-states (DEEPEN, REFLECT) are drafts to be reviewed.
+name: narrative_medicine_interview
+initial: WELCOME
+max_retries: 2
+
+events:
+  ANSWER:
+    description: "The person gives a usable answer to the question, even a short one."
+    examples:                       # optional, helps small models (drafts)
+      - "It started last spring, when I noticed the pain."
+      - "Mostly tired, I think."
+  BRIEF:
+    description: "The reply is empty, confused, off-topic or too vague to use."
+    examples:
+      - "I don't know."
+      - "What do you mean?"
+  CONFIRM: "The person agrees, consents or confirms (yes / ok / that is right)."
+  SKIP: "The person declines to answer this question or asks to move on."
+  REVISE: "The person corrects the summary or wants to change or add something."
+  STOP: "The person wants to stop the conversation."
+  DISTRESS: "The reply shows hopelessness, self-harm, crisis or acute distress."
+
+# Deterministic safety net that runs before the LLM. Illustrative list, not clinically validated.
+rules:
+  - event: DISTRESS
+    ignore_case: true
+    match:
+      - '\bkill myself\b'
+      - '\bend my life\b'
+      - '\bsuicid'
+      - '\bwant to die\b'
+      - '\bhurt myself\b'
+      - '\bself[- ]?harm'
+      - '\bno reason to live\b'
+      - '\bvoglio morire\b'
+      - '\bfarla finita\b'
+      - '\bucciderm'
+      - '\bnon ha senso vivere\b'
+
+from_any_state:                     # valid from every non-final state, at every depth
+  STOP: STOPPED
+  DISTRESS: ESCALATED
+
+on_any_transition:                  # actions run after every transition
+  - record_note: [ANSWER, REVISE]
+  - collect_emotions
+
+states:
+  WELCOME:
+    goal: "Ask for consent to start a short, optional conversation."
+    say:
+      mode: static
+      text: >-
+        Hello, and thank you for being here. I'm an automated assistant. I'd like to ask a few
+        open questions so you can tell your story in your own words; it can help your care team
+        understand what matters to you. You can skip any question or stop at any time. Is it OK
+        to begin?
+      clarify: >-
+        Just to be sure: may I ask you a few questions about your experience? A simple yes or
+        no is fine.
+    transitions:
+      CONFIRM: OPENING
+      BRIEF: WELCOME
+    fallback:
+      BRIEF: STOP
+    on_invalid: BRIEF
+
+  OPENING:
+    goal: "Invite the person to start their story wherever they like."
+    say:
+      fallback: "Could you tell me, in your own words, what brought you here?"
+    transitions:
+      ANSWER: TIMELINE
+      SKIP: TIMELINE
+      BRIEF: OPENING
+    fallback:
+      BRIEF: SKIP
+    on_invalid: BRIEF
+
+  TIMELINE:
+    goal: "Explore the sequence of events: when things started and what happened since."
+    say:
+      fallback: "When did this begin, and what has happened since then?"
+    transitions:
+      ANSWER: EMOTIONS
+      SKIP: EMOTIONS
+      BRIEF: TIMELINE
+    fallback:
+      BRIEF: SKIP
+    on_invalid: BRIEF
+
+  EMOTIONS:                         # nested machine: INVITE -> DEEPEN -> REFLECT
+    fsm:
+      initial: INVITE
+      states:
+        INVITE:
+          goal: "Invite the person to name how they felt and how they feel now."
+          say:
+            fallback: "How have you been feeling through all of this?"
+          transitions:
+            ANSWER: DEEPEN
+            SKIP: NOTHING_TO_SHARE
+            BRIEF: INVITE
+          fallback:
+            BRIEF: SKIP
+          on_invalid: BRIEF
+        DEEPEN:
+          goal: "Gently explore the feelings named, allowing mixed or conflicting feelings."
+          say:
+            fallback: "Is there more you would like to say about how that felt?"
+          transitions:
+            ANSWER: REFLECT
+            SKIP: REFLECT
+            BRIEF: DEEPEN
+          fallback:
+            BRIEF: SKIP
+          on_invalid: BRIEF
+        REFLECT:
+          goal: "Reflect the feelings back in the person's words and check that they fit."
+          say:
+            fallback: "Does that sound like how it has been for you?"
+          transitions:
+            ANSWER: FEELINGS_NAMED
+            SKIP: FEELINGS_NAMED
+            BRIEF: REFLECT
+          fallback:
+            BRIEF: SKIP
+          on_invalid: BRIEF
+      finals:                       # final state -> outer state to jump to
+        FEELINGS_NAMED: MEANING
+        NOTHING_TO_SHARE: MEANING
+
+  MEANING:
+    goal: "Ask what this experience means to the person, in their own terms."
+    say:
+      fallback: "What does all of this mean to you?"
+    transitions:
+      ANSWER: SUPPORT
+      SKIP: SUPPORT
+      BRIEF: MEANING
+    fallback:
+      BRIEF: SKIP
+    on_invalid: BRIEF
+
+  SUPPORT:
+    goal: "Ask who or what has been helping, and what they would like from their care team."
+    say:
+      fallback: "Who or what has been helping you, and what would you like from your care team?"
+    transitions:
+      ANSWER: SUMMARY
+      SKIP: SUMMARY
+      BRIEF: SUPPORT
+    fallback:
+      BRIEF: SKIP
+    on_invalid: BRIEF
+
+  SUMMARY:
+    goal: "Check that the reflective summary matches the person's story."
+    say:
+      task: reflective_summary
+      fallback: |-
+        Here is what I noted:
+        {heard}
+        Does this reflect your story? Please correct or add anything.
+    transitions:
+      CONFIRM: DONE
+      REVISE: SUMMARY
+    fallback:
+      REVISE: CONFIRM
+    on_invalid: REVISE
+
+finals:
+  DONE:
+    say:
+      mode: static
+      text: >-
+        Thank you for sharing your story. I have prepared a short card that you can review
+        with your care team.
+    entry: [build_card]               # runs when the interview ends in DONE
+  ESCALATED:
+    say:
+      mode: static
+      text: >-
+        Thank you for telling me this; it matters. I'm an automated tool and I can't give you
+        the support you deserve right now. Please contact your clinician, a person you trust,
+        or your local emergency number as soon as you can. [DEMO: in a real deployment this
+        state triggers an immediate human hand-off.]
+  STOPPED:
+    say:
+      mode: static
+      text: >-
+        Of course, we can stop here. Nothing more will be recorded, and you are welcome to come
+        back any time.
+
+# Placeholders filled by the engine: {state} {goal} {question} {reply} {last_reply} {events}
+# {task} {clarify_hint}. Any other name is read from the variables of the plugin: {heard}.
+prompts:
+  classifier_system: |-
+    You are a careful annotator in a narrative-medicine interview. Map the person's reply to
+    exactly ONE event from the allowed list. You never talk to the person. If there is any sign
+    of hopelessness, self-harm or crisis, choose DISTRESS. Never infer emotions that were not
+    explicitly named. Keep the note faithful to the person's own words.
+  classifier_user: |-
+    Current interview state: {state}
+    State goal: {goal}
+
+    Allowed events:
+    {events}
+
+    Interviewer's question:
+    {question}
+
+    Person's reply:
+    {reply}
+
+    Classify the reply.
+  question_system: |-
+    You are a warm, attentive interviewer in a narrative-medicine conversation. Ask ONE short
+    open question at a time, in plain language, in the language the person uses. Reflect what
+    you heard in a few words before asking. Never diagnose, advise or interpret.
+  question_user: |-
+    What you have heard so far:
+    {heard}
+
+    Last thing the person said: {last_reply}
+
+    {task}
+  question_task: |-
+    Goal of this step: {goal}
+    {clarify_hint}Ask your next question.
+  clarify_hint: |
+    The previous reply was unclear or too brief: rephrase more gently and make it easier to
+    answer.
+  reflective_summary: |-
+    Write a short reflective summary (3-4 sentences) of what you have heard, in the person's
+    own words where possible, then ask whether it feels right and invite corrections. Add
+    nothing that was not said.

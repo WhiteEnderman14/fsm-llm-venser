@@ -1,0 +1,233 @@
+# Support-desk intake. It is the reference example: every feature of the format is used once or
+# twice, and the comments say which. Read docs/file-format.md next to it.
+#
+# Flow: consent -> describe the problem -> TROUBLESHOOT (nested, with a nested DEVICE inside it)
+#       -> how urgent -> summary -> ticket. The person can ask for a human or stop at any time.
+name: support_ticket
+initial: WELCOME
+max_retries: 2                      # a state may repeat itself twice, then its `fallback` applies
+
+# --- events ----------------------------------------------------------------------------------
+events:
+  ANSWER:                           # long form: description + examples for small models
+    description: "The person gives a usable answer to the question, even a short one."
+    examples:
+      - "It's a ThinkPad T14, Windows 11."
+      - "It started after the update on Monday."
+  BRIEF: "The reply is empty, confused, off-topic or too vague to use."      # short form
+  CONFIRM: "The person agrees or confirms (yes / ok / that is right)."
+  REVISE: "The person corrects the summary or wants to add something."
+  SKIP: "The person declines to answer or asks to move on."
+  SOLVED: "The suggested fix worked and the problem is gone."
+  NOT_SOLVED: "The suggested fix did not work, or made no difference."
+  HUMAN: "The person asks to talk to a human agent."
+  STOP: "The person wants to stop and cancel the request."
+
+# --- rules: regular expressions checked before the LLM (no model call on a match) -------------
+rules:
+  - event: HUMAN
+    ignore_case: true               # the default, written here for clarity
+    match:
+      - '\b(speak|talk) (to|with) (a|an|some)? ?(human|person|agent|someone)\b'
+      - '\breal person\b'
+      - '\bparlare con (una persona|un operatore)\b'
+
+# --- shortcuts valid from every non-final state, at every depth --------------------------------
+from_any_state:
+  STOP: CANCELLED
+  HUMAN: HANDED_OFF
+
+# --- actions run after every transition (a call with a list of arguments) ----------------------
+on_any_transition:
+  - log_step
+  - remember: [ANSWER, REVISE]
+
+# --- states ------------------------------------------------------------------------------------
+states:
+  WELCOME:
+    goal: "Ask for consent to collect the details of the problem."
+    say:                            # static: said word for word
+      mode: static
+      text: >-
+        Hello, this is the support desk assistant. I'll ask a few short questions and then open
+        a ticket for you. You can say "stop" at any time, or ask for a person. Shall we start?
+      clarify: >-                   # said instead of `text` when the state is repeated
+        Just to be sure: may I ask you a few questions about your problem? A yes or no is fine.
+    transitions:
+      CONFIRM: ISSUE
+      BRIEF: WELCOME                # self-loop = a retry
+    fallback:
+      BRIEF: STOP                   # after max_retries retries, BRIEF becomes STOP
+    on_invalid: BRIEF               # used when the model fails or picks an event not listed here
+
+  ISSUE:
+    goal: "Ask what is going wrong, and since when."
+    say:                            # llm (default): the model writes the question
+      fallback: "What is going wrong, and since when?"     # used if the model is down
+    entry: [bump: visits]           # action with one argument, run when the state is entered
+    transitions:
+      ANSWER: TROUBLESHOOT          # an arrow to a composite state goes to its `initial`
+      BRIEF: ISSUE
+    fallback:
+      BRIEF: STOP
+    on_invalid: BRIEF
+
+  # A composite state: a whole machine inside a state.
+  TROUBLESHOOT:
+    entry: [announce: "Starting the quick checks."]        # run once when the box is entered
+    exit: [bump: checks_done]                              # ... and once when it is left
+    fsm:
+      initial: DEVICE
+      from_any_state:               # only for this box and what it contains
+        SKIP: NOT_FIXED             # skip all the checks; NOT_FIXED is a final of this box
+      on_any_transition:            # only for this box and what it contains
+        - bump: steps
+      states:
+        # A composite inside a composite: depth is not limited.
+        DEVICE:
+          fsm:
+            initial: ASK_MODEL
+            finals:
+              DEVICE_KNOWN: TRY_FIX         # final of DEVICE -> sibling of DEVICE
+            states:
+              ASK_MODEL:
+                goal: "Ask which device or product is affected."
+                say: {fallback: "Which device or product is affected?"}
+                transitions: {ANSWER: ASK_OS, BRIEF: ASK_MODEL}
+                fallback: {BRIEF: ANSWER}
+                on_invalid: BRIEF
+              ASK_OS:
+                goal: "Ask which operating system and version it runs."
+                say: {fallback: "Which operating system and version does it run?"}
+                transitions: {ANSWER: DEVICE_KNOWN, BRIEF: ASK_OS}
+                fallback: {BRIEF: ANSWER}
+                on_invalid: BRIEF
+
+        TRY_FIX:
+          goal: "Suggest one concrete fix for the problem and ask if it worked."
+          say:
+            task: suggest_fix       # a prompt of the `prompts` section replaces question_task
+            fallback: "Please restart the device and try again. Did that fix it?"
+          transitions:
+            SOLVED: FIXED           # FIXED is a final of this box, mapped to a final of the machine
+            NOT_SOLVED:             # alternatives, tried in order
+              - to: SECOND_TRY
+                guard: {when: "NOT_SOLVED < 1"}     # built-in guard: first failure only
+                do: [bump: attempts]                # action on the transition
+              - to: NOT_FIXED                       # default: last, no guard
+                do: [bump: attempts]
+            BRIEF: TRY_FIX
+          fallback: {BRIEF: NOT_SOLVED}
+          on_invalid: BRIEF
+
+        SECOND_TRY:
+          goal: "Suggest a different fix from the first one and ask if it worked."
+          say:
+            task: suggest_fix
+            fallback: "Please update the software and restart. Did that fix it?"
+          transitions:
+            SOLVED: FIXED
+            NOT_SOLVED:
+              to: NOT_FIXED         # one object: target + actions
+              do: [bump: attempts]
+            BRIEF: SECOND_TRY
+          fallback: {BRIEF: NOT_SOLVED}
+          on_invalid: BRIEF
+      finals:                       # final of TROUBLESHOOT -> where to go
+        FIXED: SOLVED_BY_FIX        # a final of the whole machine
+        NOT_FIXED: PRIORITY         # a state of the outer level
+
+  PRIORITY:
+    goal: "Ask how much the problem blocks the person's work."
+    say: {fallback: "How much does this problem block your work?"}
+    transitions:
+      ANSWER:
+        - to: SUMMARY               # first guard: built-in, reads the latest reply
+          guard: {reply_matches: '\b(urgent|asap|cannot work|can.t work|down|blocked)\b'}
+          do: [set_priority: high]
+        - to: SUMMARY               # second guard: a guard of the plugin, with an argument
+          guard: {attempts_at_least: 2}
+          do: [set_priority: high]
+        - to: SUMMARY               # default
+          do: [set_priority: normal]
+      SKIP:
+        to: SUMMARY
+        do: [set_priority: normal]
+      BRIEF: PRIORITY
+    fallback: {BRIEF: SKIP}
+    on_invalid: BRIEF
+
+  SUMMARY:
+    goal: "Check that the summary of the request is right."
+    say:
+      task: ticket_summary
+      fallback: |-
+        Here is what I have:
+        {heard}
+        Priority: {priority}. Is this right? Please correct or add anything.
+    transitions:
+      CONFIRM: TICKET_CREATED
+      REVISE: SUMMARY
+    fallback: {REVISE: CONFIRM}
+    on_invalid: REVISE
+
+# --- final states: the run ends in one of them -------------------------------------------------
+finals:
+  TICKET_CREATED:
+    say:
+      mode: static
+      text: "Done. Your ticket is {ticket_id} (priority {priority}). We will write to you soon."
+    entry: [create_ticket]          # runs before the text, so {ticket_id} is already set
+  SOLVED_BY_FIX:
+    say: {mode: static, text: "Glad it works now. No ticket is needed. Take care."}
+  HANDED_OFF:
+    say:
+      mode: static
+      text: "Of course. I'm passing you to a human agent. Please wait a moment."
+    entry: [create_ticket]          # the agent gets what was collected so far
+  CANCELLED:                        # a final without a body is fine
+
+# Prompts. Placeholders the engine fills: {state} {goal} {question} {reply} {last_reply}
+# {events} {task} {clarify_hint}. Any other name is a variable of the plugin: {heard} etc.
+prompts:
+  classifier_system: |-
+    You map the reply of a person talking to a support desk assistant to exactly ONE event of the
+    allowed list. You never talk to the person. In `detail` write the useful fact of the reply
+    in a few words (device, system, symptom, impact), or leave it empty if there is none.
+  classifier_user: |-
+    Current step: {state}
+    Goal of the step: {goal}
+
+    Allowed events:
+    {events}
+
+    Question asked:
+    {question}
+
+    Reply of the person:
+    {reply}
+
+    Classify the reply.
+  question_system: |-
+    You are a polite support desk assistant. Ask ONE short question at a time, in plain
+    language, in the language the person uses. Never promise anything and never invent facts.
+  question_user: |-
+    What you know so far:
+    {heard}
+
+    Last thing the person said: {last_reply}
+
+    {task}
+  question_task: |-
+    Goal of this step: {goal}
+    {clarify_hint}Ask your next question.
+  clarify_hint: |
+    The previous reply was unclear or too short: rephrase more simply and make it easy to answer.
+  suggest_fix: |-
+    Goal of this step: {goal}
+    What you know so far: {heard}
+    {clarify_hint}Suggest ONE concrete, safe action (no more than two short sentences) and ask if
+    it worked.
+  ticket_summary: |-
+    Write a short summary (2 or 3 sentences) of the request from what you know, then ask if it is
+    right and invite corrections. The priority is {priority}. Add nothing that was not said.
