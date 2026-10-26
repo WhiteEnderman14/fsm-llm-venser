@@ -1,0 +1,11 @@
+# AMD GPU (ROCm), with Docker or Podman. Uses the ROCm build of the Ollama image.
+#   docker compose -f compose.yaml -f compose.amd.yaml up -d ollama
+services:
+  ollama:
+    image: docker.io/ollama/ollama:rocm
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+      - render

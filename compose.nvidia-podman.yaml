@@ -1,0 +1,10 @@
+# NVIDIA GPU with Podman, through CDI. Needs the NVIDIA container toolkit and the CDI file
+# (see the README).
+#   podman compose -f compose.yaml -f compose.nvidia-podman.yaml up -d ollama
+# Use it on every command (or copy this file to compose.override.yaml), or the container is recreated without the GPU.
+services:
+  ollama:
+    devices:
+      - nvidia.com/gpu=all
+    security_opt:
+      - label=disable          # only needed on SELinux hosts

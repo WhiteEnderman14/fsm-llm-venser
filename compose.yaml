@@ -1,0 +1,56 @@
+# Works with `docker compose` and with `podman compose`.
+#
+#   docker compose up -d ollama                      start the model server
+#   docker compose exec ollama ollama pull llama3.2  download the model (once)
+#   docker compose run --rm fsm check-llm            check that the model answers
+#
+# With a GPU, add an override file to every command that starts ollama, e.g.:
+#   docker compose -f compose.yaml -f compose.nvidia.yaml up -d ollama
+#
+# Cloud models (gemini, claude): see "Models" in the README. They do not need the ollama service:
+#   docker compose run --no-deps --rm fsm check-llm --provider gemini
+#
+# Replace `docker compose` with `podman compose` if you use Podman.
+
+services:
+  ollama:
+    image: docker.io/ollama/ollama:latest
+    volumes:
+      - ollama:/root/.ollama          # the downloaded models survive restarts
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Uncomment to publish the server on the host (e.g. to use `ollama` from the host too):
+    # ports:
+    #   - "127.0.0.1:11434:11434"
+    #
+    # GPU: add one of the override files, see the README (compose.nvidia.yaml,
+    # compose.nvidia-podman.yaml, compose.amd.yaml).
+
+  fsm:
+    build:
+      context: .
+      args:
+        EXTRAS: ${EXTRAS:-ollama}        # LLM packages in the image: ollama gemini claude
+    image: fsm-llm-venser
+    environment:
+      OLLAMA_HOST: http://ollama:11434   # where the Ollama client finds the server
+      # keys for the cloud providers; put them in a .env file next to this one (it is git-ignored)
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      # your machines and scenarios, editable from the host (":Z" is for SELinux hosts)
+      - ./examples:/app/examples:ro,Z
+      # drawings written with -o /out/machine.svg end up in ./out
+      - ./out:/out:Z
+    stdin_open: true                     # needed for `run --interactive`
+    tty: true
+
+volumes:
+  ollama:
